@@ -28,15 +28,20 @@ def downloadGames(inp, allGames):
             if "lookatUrl" in i[j] and "lookatPost" in i[j]:
                 f = open(lookatPath, "a")
                 for k in i[j].keys():
-                    f.write(k + i[j][k] + " ")
+                    f.write(k + " " + str(i[j][k]) + " ")
                 f.write("\n")
                 f.close()
             else:
-                response = requests.get(json.loads(requests.post(i[j]["url"], params = i[j]["params"], data = i[j]["data"], cookies = i[j]["cookies"]).text)["url"], stream = True)
-                refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
-                filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1]
+                response = requests.post(i[j]["url"], params = i[j]["params"], data = i[j]["data"], cookies = i[j]["cookies"])
+                filename = ""
+                if json.loads(response.text)["url"].split("/")[2] == "w3g3a5v6.ssl.hwcdn.net":
+                    response = requests.get(json.loads(response.text)["url"], stream = True)
+                    refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
+                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1]
+                else:
+                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + json.loads(response.text)["url"].rsplit("/", 1)[1]
                 length = response.headers.get("content-length")
-                print("Downloading " + i[0] + ": " + refind)
+                print("Downloading " + i[0] + ": " + filename)
                 with open(pathitem + "/" + filename, "wb") as file:
                     if length is None:
                         file.write(response.content)
@@ -49,9 +54,10 @@ def downloadGames(inp, allGames):
                             done = int(50 * dl / length)
                             sys.stdout.write("\r[%s%s] " % ('=' * done, ' ' * (50-done)) + str(dl) + " of " + str(length))    
                             sys.stdout.flush()
+                    file.close()
                 print("")
 
-def listingGames(url, posting, item, reqData):
+def listingGames(inp, url, posting, item, reqData):
     gameList = [ item ]
     gamesUploaded = []
     urlPost = ""
@@ -72,14 +78,19 @@ def listingGames(url, posting, item, reqData):
         cookiesPost = dataPost.cookies
         csfrToken = { "csrf_token": bs4.BeautifulSoup(dataPost.text, "html.parser").find("meta", attrs = { "name": "csrf_token" })["value"] }
         gamesUploaded = bs4.BeautifulSoup(dataPost.text, "html.parser").find("div", class_ = "upload_list_widget").find_all(class_ = "upload")
-    for game in range(0, len(gamesUploaded)):
-        try:
-            gameList.append({ "url": urlPost + "/file/" + gamesUploaded[game].find("a")["data-upload_id"], "params": paramPost, "data": csfrToken, "cookies": cookiesPost })
-            print(gameList[0] + " =>", gameList[len(gameList)-1]["url"])
-        except TypeError:
-            gameList.append({ "lookatUrl": url, "lookatPost": urlPost, "id": (game + 1) })
-            print(gameList[0] + " => Look At " + str(game))
-    return gameList
+    if not (os.path.isdir(os.getcwd() + "/" + inp + "/" + gameList[0] + "/") and len(gamesUploaded) == len(os.listdir(os.getcwd() + "/" + inp + "/" + gameList[0] + "/"))):
+        for game in range(0, len(gamesUploaded)):
+            try:
+                uploadId = gamesUploaded[game].find("a")["data-upload_id"]
+                gameList.append({ "url": urlPost + "/file/" + uploadId, "params": paramPost, "data": csfrToken, "cookies": cookiesPost })
+                print(gameList[0] + " =>", gameList[len(gameList)-1]["url"])
+            except TypeError:
+                gameList.append({ "lookatUrl": url, "lookatPost": urlPost, "id": (game + 1) })
+                print(gameList[0] + " => Look At " + str(game))
+        return gameList
+    else:
+        print(gameList[0] + " =# Has already been downloaded")
+        return None
 
 def main():
     print("Please input bundle from itch.io (only the id of the url, not with the actual)")
@@ -98,7 +109,9 @@ def main():
                     findingDownload = gamesList.find("a", class_ = "game_download_btn")
                     if findingDownload != None:
                         # get
-                        allGamesId.append(listingGames(url, False, gamesList.find("h2", class_ = "game_title").get_text(), findingDownload["href"]))
+                        listingG = listingGames(inp, url, False, gamesList.find("h2", class_ = "game_title").get_text(), findingDownload["href"])
+                        if not listingG == None:
+                            allGamesId.append(listingG)
                         continue
                     
                     findingDownload = gamesList.find("form", class_ = "form")
@@ -106,7 +119,9 @@ def main():
                         # post
                         inpFinding = findingDownload.find_all("input")
                         butFinding = findingDownload.find("button", class_ = "button")
-                        allGamesId.append(listingGames(url, True, gamesList.find("a")["href"], [{ inpFinding[0]["name"]: inpFinding[0]["value"], inpFinding[1]["name"]: inpFinding[1]["value"], butFinding["name"]: butFinding["value"] }, r.cookies]))
+                        listingG = listingGames(inp, url, True, gamesList.find("a")["href"], [{ inpFinding[0]["name"]: inpFinding[0]["value"], inpFinding[1]["name"]: inpFinding[1]["value"], butFinding["name"]: butFinding["value"] }, r.cookies])
+                        if not listingG == None:
+                            allGamesId.append(listingG)
                         continue
                         
                     print("FAILED")
@@ -114,6 +129,9 @@ def main():
             else:
                 print("ERROR")
         downloadGames(inp, allGamesId)
+        print("FINISHED!")
+    else:
+        print("FAILED TO GET BUNDLE")
 
 if __name__ == "__main__":
     main()
