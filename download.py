@@ -72,7 +72,7 @@ def main():
     if r.ok and r.status_code == 200:
         allGamesId = []
         pages = int(bs4.BeautifulSoup(r.text, "html.parser").find("span", class_ = "pager_label").a.get_text())
-        for i in range(2, 3):#1, 2):#pages + 1):
+        for i in range(1, pages + 1):
             print("PAGE: {} of {}".format(i, pages))
             r = requests.get(url + "?page=" + str(i))
             if r.ok and r.status_code == 200:
