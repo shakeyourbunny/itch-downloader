@@ -5,34 +5,51 @@ import sys
 import threading
 import os
 import re
+import datetime
 
 def downloadGames(inp, allGames):
     path = os.getcwd() + "/" + inp
     if not os.path.isdir(path):
         os.mkdir(path)
+    lookatPath = path + "/Lookat.TODO"
+    if not os.path.isfile(lookatPath):
+        open(lookatPath, "w").close()
+    f = open(lookatPath, "a")
+    f.write("-" * 10)
+    f.write(str(datetime.datetime.now()))
+    f.write("-" * 10)
+    f.write("\n")
+    f.close()
     for i in allGames:
         pathitem = path + "/" + i[0]
         if not os.path.isdir(pathitem):
             os.mkdir(pathitem)
         for j in range(1, len(i)):
-            response = requests.get(json.loads(requests.post(i[j]["url"], params = i[j]["params"], data = i[j]["data"], cookies = i[j]["cookies"]).text)["url"], stream = True)
-            refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
-            filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1]
-            length = response.headers.get("content-length")
-            print("Downloading " + i[0] + ": " + refind)
-            with open(pathitem + "/" + filename, "wb") as file:
-                if length is None:
-                    file.write(response.content)
-                else:
-                    dl = 0
-                    length = int(length)
-                    for data in response.iter_content(chunk_size=4096):
-                        dl += len(data)
-                        file.write(data)
-                        done = int(50 * dl / length)
-                        sys.stdout.write("\r[%s%s] " % ('=' * done, ' ' * (50-done)) + str(dl) + " of " + str(length))    
-                        sys.stdout.flush()
-            print("")
+            if "lookatUrl" in i[j] and "lookatPost" in i[j]:
+                f = open(lookatPath, "a")
+                for k in i[j].keys():
+                    f.write(k + i[j][k] + " ")
+                f.write("\n")
+                f.close()
+            else:
+                response = requests.get(json.loads(requests.post(i[j]["url"], params = i[j]["params"], data = i[j]["data"], cookies = i[j]["cookies"]).text)["url"], stream = True)
+                refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
+                filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1]
+                length = response.headers.get("content-length")
+                print("Downloading " + i[0] + ": " + refind)
+                with open(pathitem + "/" + filename, "wb") as file:
+                    if length is None:
+                        file.write(response.content)
+                    else:
+                        dl = 0
+                        length = int(length)
+                        for data in response.iter_content(chunk_size=4096):
+                            dl += len(data)
+                            file.write(data)
+                            done = int(50 * dl / length)
+                            sys.stdout.write("\r[%s%s] " % ('=' * done, ' ' * (50-done)) + str(dl) + " of " + str(length))    
+                            sys.stdout.flush()
+                print("")
 
 def listingGames(url, posting, item, reqData):
     gameList = [ item ]
@@ -55,13 +72,13 @@ def listingGames(url, posting, item, reqData):
         cookiesPost = dataPost.cookies
         csfrToken = { "csrf_token": bs4.BeautifulSoup(dataPost.text, "html.parser").find("meta", attrs = { "name": "csrf_token" })["value"] }
         gamesUploaded = bs4.BeautifulSoup(dataPost.text, "html.parser").find("div", class_ = "upload_list_widget").find_all(class_ = "upload")
-    for game in gamesUploaded:
+    for game in range(0, len(gamesUploaded)):
         try:
-            gameList.append({ "url": urlPost + "/file/" + game.find("a")["data-upload_id"], "params": paramPost, "data": csfrToken, "cookies": cookiesPost })
+            gameList.append({ "url": urlPost + "/file/" + gamesUploaded[game].find("a")["data-upload_id"], "params": paramPost, "data": csfrToken, "cookies": cookiesPost })
             print(gameList[0] + " =>", gameList[len(gameList)-1]["url"])
-        except:
-            print("ERROR\t" + item + " " + str(reqData) + " " + str(game))
-            sys.exit(1)
+        except TypeError:
+            gameList.append({ "lookatUrl": url, "lookatPost": urlPost, "id": (game + 1) })
+            print(gameList[0] + " => Look At " + str(game))
     return gameList
 
 def main():
