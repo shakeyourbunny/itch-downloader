@@ -21,7 +21,7 @@ def downloadGames(inp, allGames):
     f.write("\n")
     f.close()
     for i in allGames:
-        pathitem = path + "/" + i[0]
+        pathitem = path + "/" + i[0].replace("/", "_")
         if not os.path.isdir(pathitem):
             os.mkdir(pathitem)
         for j in range(1, len(i)):
@@ -37,9 +37,9 @@ def downloadGames(inp, allGames):
                 if json.loads(response.text)["url"].split("/")[2] == "w3g3a5v6.ssl.hwcdn.net":
                     response = requests.get(json.loads(response.text)["url"], stream = True)
                     refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
-                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1]
+                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1].replace("/", "_")
                 else:
-                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + json.loads(response.text)["url"].rsplit("/", 1)[1]
+                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + json.loads(response.text)["url"].rsplit("/", 1)[1].replace("/", "_")
                 length = response.headers.get("content-length")
                 print("Downloading " + i[0] + ": " + filename)
                 with open(pathitem + "/" + filename, "wb") as file:
