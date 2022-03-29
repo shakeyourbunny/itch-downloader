@@ -33,13 +33,12 @@ def downloadGames(inp, allGames):
                 f.close()
             else:
                 response = requests.post(i[j]["url"], params = i[j]["params"], data = i[j]["data"], cookies = i[j]["cookies"])
-                filename = ""
+                filename = json.loads(response.text)["url"].rsplit("/", 1)[1].replace("/", "_").rsplit("?", 1)[0]
                 if json.loads(response.text)["url"].split("/")[2] == "w3g3a5v6.ssl.hwcdn.net":
                     response = requests.get(json.loads(response.text)["url"], stream = True)
-                    refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
-                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1].replace("/", "_")
-                else:
-                    filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + json.loads(response.text)["url"].rsplit("/", 1)[1].replace("/", "_")
+                    if "Content-Disposition" in response.headers:
+                        refind = re.findall("filename=(.+)", response.headers["content-disposition"])[0]
+                        filename = i[j]["url"].rsplit("/", 1)[len(i[j]["url"].rsplit("/", 1))-1] + "_" + refind[1:len(refind)-1].replace("/", "_")
                 length = response.headers.get("content-length")
                 print("Downloading " + i[0] + ": " + filename)
                 with open(pathitem + "/" + filename, "wb") as file:
@@ -78,7 +77,7 @@ def listingGames(inp, url, posting, item, reqData):
         cookiesPost = dataPost.cookies
         csfrToken = { "csrf_token": bs4.BeautifulSoup(dataPost.text, "html.parser").find("meta", attrs = { "name": "csrf_token" })["value"] }
         gamesUploaded = bs4.BeautifulSoup(dataPost.text, "html.parser").find("div", class_ = "upload_list_widget").find_all(class_ = "upload")
-    if not (os.path.isdir(os.getcwd() + "/" + inp + "/" + gameList[0] + "/") and len(gamesUploaded) == len(os.listdir(os.getcwd() + "/" + inp + "/" + gameList[0] + "/"))):
+    if not (os.path.isdir(os.getcwd() + "/" + inp + "/" + gameList[0].replace("/", "_") + "/") and len(gamesUploaded) == len(os.listdir(os.getcwd() + "/" + inp + "/" + gameList[0].replace("/", "_") + "/"))):
         for game in range(0, len(gamesUploaded)):
             try:
                 uploadId = gamesUploaded[game].find("a")["data-upload_id"]
