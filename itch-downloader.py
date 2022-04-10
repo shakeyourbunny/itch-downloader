@@ -1,6 +1,7 @@
 import configparser
 import os
 import sys
+import time
 from http.cookiejar import MozillaCookieJar
 
 import requests
@@ -9,7 +10,7 @@ from bs4 import BeautifulSoup
 
 import dltool
 
-version = "0.5"
+version = "0.5.1"
 
 def local_file_sanity_check(localfile, localsize, localdate, remotesize, remotedate):
     if not os.path.isfile(localfile):
@@ -51,19 +52,9 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
         else:
             print("")
 
-def main():
-    # initialize and load defaults
-    configfile = "itch-downloader.ini"
-    config['DEFAULT'] = {
-        "download directory": "Downloads",
-        "cookie file": "cookies-itch.txt"
-    }
-    if not os.path.isfile(configfile):
-        with open(configfile, "w", encoding="utf-8") as f:
-            config.write(f)
-    else:
-        with open(configfile, "r", encoding="utf-8") as f:
-            config.read(f)
+def main(config):
+    print("Download directory is '{}'.".format(config["DEFAULT"]["download directory"]))
+    time.sleep(3)
 
     # basic setup
     session = requests.Session()
@@ -181,7 +172,26 @@ if __name__ == "__main__":
     print("")
 
     config = configparser.ConfigParser()
-    main()
+
+    # initialize and load defaults
+    configfile = "itch-downloader.ini"
+    config['DEFAULT'] = {
+        "download directory": "Downloads",
+        "cookie file": "cookies-itch.txt"
+    }
+    if not os.path.isfile(configfile):
+        with open(configfile, "w", encoding="utf-8") as f:
+            config.write(f)
+        print("*** created new configuration. please edit ''.".format(configfile))
+        if sys.platform == "win32":
+            x = input("Press ENTER to exit.")
+            sys.exit(1)
+
+    config.read(configfile)
+
+    main(config)
 
     print("")
     print("Done.")
+    if sys.platform == "win32":
+        x = input("Press ENTER to exit.")

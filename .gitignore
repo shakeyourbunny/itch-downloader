@@ -1,2 +1,10 @@
+.env/
 .idea/
+__pycache__
+build/
+dist/
 cookies*
+*.exe
+itch-downloader.ini
+itch-downloader.spec
+

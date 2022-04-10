@@ -1,6 +1,12 @@
 # Changelog for itch.io Downloader
 
+## 0.5.1 (2022-04-10)
+
+- fixed config file reading
+- some adjustments for win32 platform
+
 ## 0.5 (2022-04-10)
+- 
 
 - first numbered revision
 - configuration put into proper .ini file
