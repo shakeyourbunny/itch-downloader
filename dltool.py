@@ -2,7 +2,6 @@
 
 import os
 import shutil
-import sys
 import time
 
 import dateparser
@@ -42,7 +41,7 @@ def printProgressBar(iteration, total, prefix='', suffix='', usepercent=True, de
     if iteration == total:
         print(flush=True)
 
-def download_a_file(url, filename="", session=None, cookies=None, rename_old=True):
+def download_a_file(url, filename="", session=None, cookies=None, rename_old=True, skip_if_identical=True):
     if cookies == None and session != None:
         cookies = session.cookies
     if session == None:
@@ -54,7 +53,15 @@ def download_a_file(url, filename="", session=None, cookies=None, rename_old=Tru
     if data.status_code == 200:
         dltime = data.headers["last-modified"]
         datalength = int(data.headers["content-length"])
+
+        if os.path.exists(filename) and skip_if_identical:
+            stats = os.stat(filename)
+            if dateparser.parse(dltime).timestamp() == stats.st_mtime and datalength == stats.st_size:
+                print("File {} already fully downloaded and identical to online version, skipping.".format(filename))
+                return True
+
         datadownloaded = 0
+
         if filename == "":
             filename = data.headers["content-disposition"].split("'")[-1]
         shortfilename = filename.split(os.sep)[-1]
@@ -62,14 +69,13 @@ def download_a_file(url, filename="", session=None, cookies=None, rename_old=Tru
         starttime = time.time()
 
         # rename old download if necessary
-        if os.path.exists(filename):
+        if os.path.exists(filename) and rename_old:
             print("Renaming {} to {}.".format(filename, filename + ".old"))
             os.rename(filename, filename + ".old")
 
         # start download
         print("Starting download of {} (-> {})".format(dlurl, filename))
         with open(incompletefilename, "wb") as f:
-            dl_finished = False
             with session.get(dlurl, stream=True, cookies=cookies) as downloaddata:
                 for chunk in downloaddata.iter_content(chunk_size=4096):
                     if chunk:  # filter out keep-alive
@@ -91,7 +97,13 @@ def download_a_file(url, filename="", session=None, cookies=None, rename_old=Tru
         # print("\n{} - disk: {}, http: {}".format(filename, sizeondisk, datalength))
         if sizeondisk != datalength:
             print("*** Size on Disk differs from HTTP!!")
-            sys.exit(1)
+            return False
+
         # touch up timestamp
         timestamp = int(dateparser.parse(dltime).timestamp())
         os.utime(filename, (timestamp, timestamp))
+
+        # done
+        return True
+    else:
+        return False
