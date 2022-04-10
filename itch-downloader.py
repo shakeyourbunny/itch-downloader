@@ -1,4 +1,4 @@
-import json
+import configparser
 import os
 import sys
 from http.cookiejar import MozillaCookieJar
@@ -7,8 +7,9 @@ import requests
 import requests.cookies
 from bs4 import BeautifulSoup
 
-import config
 import dltool
+
+version = "0.5"
 
 def local_file_sanity_check(localfile, localsize, localdate, remotesize, remotedate):
     if not os.path.isfile(localfile):
@@ -37,7 +38,7 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
         dlsize = dlhead.headers["content-length"]
 
         # local preparation
-        fulldldir = os.path.join(config.dlbasedir, gamedirectory)
+        fulldldir = os.path.join(config["DEFAULT"]["download directory"], gamedirectory)
         os.makedirs(fulldldir, exist_ok=True)
         fulldname = os.path.join(fulldldir, dlfilename)
 
@@ -51,22 +52,30 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
             print("")
 
 def main():
+    # initialize and load defaults
+    configfile = "itch-downloader.ini"
+    config['DEFAULT'] = {
+        "download directory": "Downloads",
+        "cookie file": "cookies-itch.txt"
+    }
+    if not os.path.isfile(configfile):
+        with open(configfile, "w", encoding="utf-8") as f:
+            config.write(f)
+    else:
+        with open(configfile, "r", encoding="utf-8") as f:
+            config.read(f)
+
+    # basic setup
     session = requests.Session()
     cookiejar = requests.cookies.RequestsCookieJar()
 
-    cookies = MozillaCookieJar("cookies-itch.txt")
+    cookies = MozillaCookieJar(config["DEFAULT"]["cookie file"])
     cookies.load(ignore_expires=True, ignore_discard=True)
     cookiejar.update(cookies)
 
     session.cookies = cookiejar
 
-    os.makedirs(config.dlbasedir, exist_ok=True)
-    print("*** loading completed downloads library.")
-    if os.path.isfile(os.path.join(config.dlbasedir, config.datalib_completed_downloads)):
-        with open(os.path.join(config.dlbasedir, config.datalib_completed_downloads), "r", encoding="utf-8") as f:
-            completed_downloads = json.loads(f.read())
-    else:
-        completed_downloads = dict()
+    os.makedirs(config["DEFAULT"]["download directory"], exist_ok=True)
 
     print("*** loading and parsing my claimed purchases ***")
     mypurchases_url = "https://itch.io/my-purchases"
@@ -139,8 +148,11 @@ def main():
         print("{} items found: {} downloadable games, {} non-game stuff.".format(len(gamelist) + len(not_a_game_list),
                                                                                  len(gamelist), len(not_a_game_list)))
 
+        numGames = len(gamelist)
+        curGame = 0
         for g in gamelist:
-            print(" -- " + g["title"])
+            curGame = curGame + 1
+            print(" -- [{}/{}] ".format(curGame, numGames) + g["title"])
 
             r = session.get(g["dlurl"])
             if r.status_code == 200:
@@ -165,4 +177,11 @@ def main():
         print("Could not access {} properly [{}].".format(mypurchases_url, r.status_code))
 
 if __name__ == "__main__":
+    print("itch-downloader.py {} (c) 2022 shakeyourbunny@gmail.com".format(version))
+    print("")
+
+    config = configparser.ConfigParser()
     main()
+
+    print("")
+    print("Done.")
