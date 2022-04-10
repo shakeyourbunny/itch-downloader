@@ -1,12 +1,15 @@
 # download pretty a file
 
-import requests
-import os, sys
-import time, shutil
+import os
+import shutil
+import sys
+import time
+
 import dateparser
+import requests
 
 # Print iterations progress
-def printProgressBar (iteration, total, prefix = '', suffix = '', usepercent = True, decimals = 1, fill = '█'):
+def printProgressBar(iteration, total, prefix='', suffix='', usepercent=True, decimals=1, fill='█'):
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -54,33 +57,41 @@ def download_a_file(url, filename="", session=None, cookies=None, rename_old=Tru
         datadownloaded = 0
         if filename == "":
             filename = data.headers["content-disposition"].split("'")[-1]
+        shortfilename = filename.split(os.sep)[-1]
+        incompletefilename = filename + ".incomplete"
         starttime = time.time()
 
         # rename old download if necessary
         if os.path.exists(filename):
-            print("Renaming {} to {}.".format(filename, filename+".old"))
-            os.rename(filename, filename+".old")
+            print("Renaming {} to {}.".format(filename, filename + ".old"))
+            os.rename(filename, filename + ".old")
 
         # start download
         print("Starting download of {} (-> {})".format(dlurl, filename))
-        with open(filename, "wb") as f:
+        with open(incompletefilename, "wb") as f:
             dl_finished = False
             with session.get(dlurl, stream=True, cookies=cookies) as downloaddata:
                 for chunk in downloaddata.iter_content(chunk_size=4096):
-                    if chunk:   # filter out keep-alive
+                    if chunk:  # filter out keep-alive
                         f.write(chunk)
                         datadownloaded += len(chunk)
-                        difftime=time.time()-starttime
-                        kbs=(datadownloaded/difftime)/1024
-                        mysuffix="{} / {} MB ({} KB/s)".format(round(datadownloaded/1024/1024,1), round(datalength/1024/1024, 1), round(kbs, 1))
-                        printProgressBar(datadownloaded, datalength, suffix=filename, prefix=mysuffix, usepercent=False)
+                        difftime = time.time() - starttime
+                        kbs = (datadownloaded / difftime) / 1024
+                        mysuffix = "{} / {} MB ({} KB/s)".format(round(datadownloaded / 1024 / 1024, 1),
+                                                                 round(datalength / 1024 / 1024, 1), round(kbs, 1))
+                        printProgressBar(datadownloaded, datalength, suffix=shortfilename, prefix=mysuffix,
+                                         usepercent=False)
         f.close()
+
+        # finish download
+        os.rename(incompletefilename, filename)
+
+        # check size
         sizeondisk = os.path.getsize(filename)
-        #print("\n{} - disk: {}, http: {}".format(filename, sizeondisk, datalength))
+        # print("\n{} - disk: {}, http: {}".format(filename, sizeondisk, datalength))
         if sizeondisk != datalength:
             print("*** Size on Disk differs from HTTP!!")
             sys.exit(1)
         # touch up timestamp
         timestamp = int(dateparser.parse(dltime).timestamp())
         os.utime(filename, (timestamp, timestamp))
-
