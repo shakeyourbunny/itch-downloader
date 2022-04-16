@@ -1,7 +1,6 @@
 # itch.io Downloader
 
-itch.io Downloader is a python script that allows you to download all games bound to your itch.io account. It was
-originally based https://github.com/K3VRAL/Itch.io-Bundle-Downloader but there is no code from it left.
+itch.io Downloader is a python script that allows you to download all games bound to your itch.io account.
 
 Note that you can only download games from itch.io with this which are bound to your account. You cannot pirate games on
 itch.io with that.
@@ -43,4 +42,6 @@ welcome.
 - currently, there is no blacklist for not downloading stuff.
 - currently, non-games (PDFs, art assets or similar things are not downloaded)
 
+## honorable mention
 
+This script was originally based https://github.com/K3VRAL/Itch.io-Bundle-Downloader but there is no code from it left.
