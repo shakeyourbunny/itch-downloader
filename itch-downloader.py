@@ -2,15 +2,17 @@ import configparser
 import os
 import sys
 import time
+import json
 from http.cookiejar import MozillaCookieJar
 
 import requests
 import requests.cookies
+import dateparser
 from bs4 import BeautifulSoup
 
 import dltool
 
-version = "0.5.1"
+version = "0.5.2"
 
 def local_file_sanity_check(localfile, localsize, localdate, remotesize, remotedate):
     if not os.path.isfile(localfile):
@@ -35,13 +37,48 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
         # remote file check
         dlhead = session.head(dlj["url"])
         dldate = dlhead.headers["last-modified"]
-        dlfilename = dlhead.headers["content-disposition"].split('"')[1]
+        if "content-disposition" in dlhead.headers:
+            dlfilename = dlhead.headers["content-disposition"].split('"')[1]
+        else:
+            dlfilename = dlj["url"].split("?")[0].split("/")[-1]
         dlsize = dlhead.headers["content-length"]
 
         # local preparation
         fulldldir = os.path.join(config["DEFAULT"]["download directory"], gamedirectory)
         os.makedirs(fulldldir, exist_ok=True)
         fulldname = os.path.join(fulldldir, dlfilename)
+
+        # detect mac und linux downloads
+        if dlfilename.lower().endswith("mac.zip") or \
+            "osx" in dlfilename.lower() or \
+            "macos" in dlfilename.lower() or \
+            dlfilename.lower().endswith("linux.zip") or \
+            "linux" in dlfilename.lower() or \
+            dlfilename.lower().endswith(".tgz") or \
+            dlfilename.lower().endswith(".gz") or \
+            dlfilename.lower().endswith(".deb") or \
+            dlfilename.lower().endswith(".rpm") or \
+            dlfilename.lower().endswith(".xz") or \
+            dlfilename.lower().endswith(".bz2") or \
+            dlfilename.lower().endswith(".pkg") or \
+            ".app" in dlfilename.lower() or \
+            dlfilename.lower().endswith(".dmg"):
+
+            print("SKIP: {} is probably a linux or mac release.".format(dlfilename))
+            if os.path.isfile(fulldname):
+                os.remove(fulldname)
+            time.sleep(3)
+            return
+
+        # rename files if exist.
+        if os.path.isfile(fulldname):
+            suf = dlfilename.split(".")[-1]
+            newdlname = dlfilename.replace("."+suf, "_{}.{}".format(dateparser.parse(dldate).strftime("%Y%m%d"), suf))
+            newfulldname = os.path.join(fulldldir, newdlname)
+            if os.path.exists(fulldname):
+                if os.path.exists(newfulldname):
+                    os.remove(newfulldname)
+                os.rename(fulldname, newfulldname)
 
         # do the download
         dltool.download_a_file(dlj["url"], filename=fulldname, session=session)
@@ -95,12 +132,17 @@ def main(config):
                     }
                 )
             else:
-                gamelist.append(
-                    {
-                        "title": gtitle,
-                        "dlurl": gurl
-                    }
-                )
+                plat = platform_soup.find("span")["class"][1]
+                if plat in ["icon-windows8", "icon-android"]:
+                    gamelist.append(
+                        {
+                            "title": gtitle,
+                            "dlurl": gurl
+                        }
+                    )
+                else:
+                    print("*** unsupported platform '{}'.".format(plat))
+                    sys.exit(1)
 
         soup_nextpage = BeautifulSoup(r.text, "html.parser").find("div", attrs={"class": "next_page forward_link"})
         while soup_nextpage:
@@ -139,31 +181,44 @@ def main(config):
         print("{} items found: {} downloadable games, {} non-game stuff.".format(len(gamelist) + len(not_a_game_list),
                                                                                  len(gamelist), len(not_a_game_list)))
 
+        trackfile = os.path.join(config["DEFAULT"]["download directory"], ".itch-downloader-track.txt")
+        trackNum = 0
+        if os.path.exists(trackfile):
+            with open(trackfile, "r", encoding="utf-8") as f:
+                trackNum = json.loads(f.read())
+            f.close()
+            os.remove(trackfile)
+
         numGames = len(gamelist)
         curGame = 0
         for g in gamelist:
             curGame = curGame + 1
-            print(" -- [{}/{}] ".format(curGame, numGames) + g["title"])
+            if curGame >= trackNum:
+                print("")
+                print(" -- [{}/{}] ".format(curGame, numGames) + g["title"])
 
-            r = session.get(g["dlurl"])
-            if r.status_code == 200:
-                # https://joemanaco.itch.io/captain-backwater/file/12961?source=game_download&key=4zsEYKAs3XzZFDUH_HS_oylA6mpOP_SyNZq5FY_S
-
-                dlpage_soup = BeautifulSoup(r.text, "html.parser")
-                dlpage_dlbuttons = dlpage_soup.find_all("a", class_="button download_btn")
-                dlurl = g['dlurl'].rsplit("/", 2)[0]
-                gamedirectory = g["dlurl"].split("/")[3]
-                paramPost = {"source": "game_download", "key": g["dlurl"].split("/")[5]}
-                csfrToken = dlpage_soup.find("meta", attrs={"name": "csrf_token"})["value"]
-                uploads = dlpage_soup.find("div", class_="upload_list_widget").find_all(class_="upload")
-                for u in uploads:
-                    fetch_upload(u, dlurl, session, paramPost, csfrToken, gamedirectory)
-            else:
-                print("Could not access download page {} !".format(g["dlurl"]))
-                sys.exit(1)
+                # trackfile
+                with open(trackfile, "w", encoding="utf-8") as f:
+                    json.dump(curGame, f)
+                f.close()
 
 
+                r = session.get(g["dlurl"])
+                if r.status_code == 200:
+                    # https://joemanaco.itch.io/captain-backwater/file/12961?source=game_download&key=4zsEYKAs3XzZFDUH_HS_oylA6mpOP_SyNZq5FY_S
 
+                    dlpage_soup = BeautifulSoup(r.text, "html.parser")
+                    dlpage_dlbuttons = dlpage_soup.find_all("a", class_="button download_btn")
+                    dlurl = g['dlurl'].rsplit("/", 2)[0]
+                    gamedirectory = g["dlurl"].split("/")[3]
+                    paramPost = {"source": "game_download", "key": g["dlurl"].split("/")[5]}
+                    csfrToken = dlpage_soup.find("meta", attrs={"name": "csrf_token"})["value"]
+                    uploads = dlpage_soup.find("div", class_="upload_list_widget").find_all(class_="upload")
+                    for u in uploads:
+                        fetch_upload(u, dlurl, session, paramPost, csfrToken, gamedirectory)
+                else:
+                    print("Could not access download page {} !".format(g["dlurl"]))
+                    sys.exit(1)
     else:
         print("Could not access {} properly [{}].".format(mypurchases_url, r.status_code))
 

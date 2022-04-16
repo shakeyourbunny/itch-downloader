@@ -1,5 +1,11 @@
 # Changelog for itch.io Downloader
 
+## 0.5.2 (2022-04-12)
+- added a primitive download continue (tracks download position and resumes download at number)
+- fixed (hopefully) "SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC"
+- fixed missing content-disposition
+- some reformatting
+
 ## 0.5.1 (2022-04-10)
 
 - fixed config file reading

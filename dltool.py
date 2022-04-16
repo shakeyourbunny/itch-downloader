@@ -71,13 +71,15 @@ def download_a_file(url, filename="", session=None, cookies=None, rename_old=Tru
         # rename old download if necessary
         if os.path.exists(filename) and rename_old:
             print("Renaming {} to {}.".format(filename, filename + ".old"))
+            if os.path.exists(filename + ".old"):
+                os.remove(filename + ".old")
             os.rename(filename, filename + ".old")
 
         # start download
         print("Starting download of {} (-> {})".format(dlurl, filename))
         with open(incompletefilename, "wb") as f:
             with session.get(dlurl, stream=True, cookies=cookies) as downloaddata:
-                for chunk in downloaddata.iter_content(chunk_size=4096):
+                for chunk in downloaddata.iter_content(chunk_size=8192):
                     if chunk:  # filter out keep-alive
                         f.write(chunk)
                         datadownloaded += len(chunk)
