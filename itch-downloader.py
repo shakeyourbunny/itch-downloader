@@ -1,18 +1,18 @@
 import configparser
+import json
 import os
 import sys
 import time
-import json
 from http.cookiejar import MozillaCookieJar
 
+import dateparser
 import requests
 import requests.cookies
-import dateparser
 from bs4 import BeautifulSoup
 
 import dltool
 
-version = "0.5.2"
+version = "0.5.3"
 
 def local_file_sanity_check(localfile, localsize, localdate, remotesize, remotedate):
     if not os.path.isfile(localfile):
@@ -44,7 +44,7 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
         dlsize = dlhead.headers["content-length"]
 
         # local preparation
-        fulldldir = os.path.join(config["DEFAULT"]["download directory"], gamedirectory)
+        fulldldir = os.path.join(config["DEFAULT"]["download_directory"], gamedirectory)
         os.makedirs(fulldldir, exist_ok=True)
         fulldname = os.path.join(fulldldir, dlfilename)
 
@@ -61,8 +61,8 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
             dlfilename.lower().endswith(".xz") or \
             dlfilename.lower().endswith(".bz2") or \
             dlfilename.lower().endswith(".pkg") or \
-            ".app" in dlfilename.lower() or \
-            dlfilename.lower().endswith(".dmg"):
+                ".app" in dlfilename.lower() or \
+                dlfilename.lower().endswith(".dmg"):
 
             print("SKIP: {} is probably a linux or mac release.".format(dlfilename))
             if os.path.isfile(fulldname):
@@ -71,14 +71,20 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
             return
 
         # rename files if exist.
+        suf = dlfilename.split(".")[-1]
+        newdlname = dlfilename.replace("." + suf, "_{}.{}".format(dateparser.parse(dldate).strftime("%Y%m%d"), suf))
+        newfulldname = os.path.join(fulldldir, newdlname)
+
+        # old format
         if os.path.isfile(fulldname):
-            suf = dlfilename.split(".")[-1]
-            newdlname = dlfilename.replace("."+suf, "_{}.{}".format(dateparser.parse(dldate).strftime("%Y%m%d"), suf))
-            newfulldname = os.path.join(fulldldir, newdlname)
             if os.path.exists(fulldname):
                 if os.path.exists(newfulldname):
                     os.remove(newfulldname)
                 os.rename(fulldname, newfulldname)
+                fulldname = newfulldname
+
+        # new filename with date stamp
+        fulldname = newfulldname
 
         # do the download
         dltool.download_a_file(dlj["url"], filename=fulldname, session=session)
@@ -90,20 +96,20 @@ def fetch_upload(uploads_soup, dlurl, session, params, csfrtoken, gamedirectory)
             print("")
 
 def main(config):
-    print("Download directory is '{}'.".format(config["DEFAULT"]["download directory"]))
+    print("Download directory is '{}'.".format(config["DEFAULT"]["download_directory"]))
     time.sleep(3)
 
     # basic setup
     session = requests.Session()
     cookiejar = requests.cookies.RequestsCookieJar()
 
-    cookies = MozillaCookieJar(config["DEFAULT"]["cookie file"])
+    cookies = MozillaCookieJar(config["DEFAULT"]["cookie_file"])
     cookies.load(ignore_expires=True, ignore_discard=True)
     cookiejar.update(cookies)
 
     session.cookies = cookiejar
 
-    os.makedirs(config["DEFAULT"]["download directory"], exist_ok=True)
+    os.makedirs(config["DEFAULT"]["download_directory"], exist_ok=True)
 
     print("*** loading and parsing my claimed purchases ***")
     mypurchases_url = "https://itch.io/my-purchases"
@@ -181,7 +187,7 @@ def main(config):
         print("{} items found: {} downloadable games, {} non-game stuff.".format(len(gamelist) + len(not_a_game_list),
                                                                                  len(gamelist), len(not_a_game_list)))
 
-        trackfile = os.path.join(config["DEFAULT"]["download directory"], ".itch-downloader-track.txt")
+        trackfile = os.path.join(config["DEFAULT"]["download_directory"], ".itch-downloader-track.txt")
         trackNum = 0
         if os.path.exists(trackfile):
             with open(trackfile, "r", encoding="utf-8") as f:
@@ -202,7 +208,6 @@ def main(config):
                     json.dump(curGame, f)
                 f.close()
 
-
                 r = session.get(g["dlurl"])
                 if r.status_code == 200:
                     # https://joemanaco.itch.io/captain-backwater/file/12961?source=game_download&key=4zsEYKAs3XzZFDUH_HS_oylA6mpOP_SyNZq5FY_S
@@ -219,6 +224,56 @@ def main(config):
                 else:
                     print("Could not access download page {} !".format(g["dlurl"]))
                     sys.exit(1)
+
+                ## fetch screenshot of game page
+                if config["SCREENSHOT"]["dump_webpage"]:
+                    if not config["SCREENSHOT"]["screenshot_service"].startswith("http"):
+                        print("*** STOP: You have to provide a screenshot service in the configuration file.")
+                        print("***       hint: include a '{}' where the target url is.")
+                        if sys.platform == "win32":
+                            x = input("Press ENTER to exit.")
+                        sys.exit(1)
+
+                    print("Making screenshot of {}.".format(dlurl))
+                    picturedata = requests.get(config["SCREENSHOT"]["screenshot_service"].format(dlurl))
+                    if picturedata.status_code != 200:
+                        print("[{}] Could not retrieve picture of website!".format(picturedata.status_code))
+                        sys.exit(1)
+                    fulldldir = os.path.join(config["DEFAULT"]["download_directory"], gamedirectory)
+                    with open(os.path.join(fulldldir, "screenshot_website.jpg"), "wb") as f:
+                        f.write(picturedata.content)
+                    f.close()
+
+                ## fetch screenshot(s)
+                gamepage = session.get(dlurl)
+                if gamepage.status_code != 200:
+                    print("*** STOP: could not load game page {}.".format(dlurl))
+                    if sys.platform == "win32":
+                        x = input("Press ENTER to exit.")
+                    sys.exit(1)
+
+                if config["SCREENSHOT"]["dump_screenshots"]:
+                    gamepage_soup = BeautifulSoup(gamepage.text, "html.parser")
+                    screenshots_soup = gamepage_soup.find_all("img", class_="screenshot")
+                    if len(screenshots_soup) > 0:
+                        print("Downloading {} screenshots.".format(len(screenshots_soup)))
+                        c = 1
+                        for ss in screenshots_soup:
+                            cs = "%02d" % c
+                            screenshot = session.get(ss.parent["href"])
+                            if screenshot.status_code != 200:
+                                print("*** STOP: could not load screenshot {}.".format(ss.parent["href"]))
+                                if sys.platform == "win32":
+                                    x = input("Press ENTER to exit.")
+                                sys.exit(1)
+                            with open(os.path.join(fulldldir, "screenshot_{}.jpg".format(cs)), "wb") as f:
+                                f.write(screenshot.content)
+                            f.close()
+                            c = c + 1
+                        print("")
+
+                    else:
+                        print("Downloading screenshots: no usable screenshot found.")
     else:
         print("Could not access {} properly [{}].".format(mypurchases_url, r.status_code))
 
@@ -231,9 +286,24 @@ if __name__ == "__main__":
     # initialize and load defaults
     configfile = "itch-downloader.ini"
     config['DEFAULT'] = {
-        "download directory": "Downloads",
-        "cookie file": "cookies-itch.txt"
+        "download_directory": "Downloads",
+        "cookie_file": "cookies-itch.txt"
     }
+    config['OPSYS'] = {
+        "windows": True,
+        "linux": False,
+        "macos": False,
+        "android": False
+    }
+    config['SCREENSHOT'] = {
+        "screenshot_service": "",  # you have to provide dl url for yourself
+        "cmd_videodownloader": "yt-dlp",
+
+        "dump_webpage": False,
+        "dump_screenshots": False,
+        "dump_videos": False
+    }
+
     if not os.path.isfile(configfile):
         with open(configfile, "w", encoding="utf-8") as f:
             config.write(f)
